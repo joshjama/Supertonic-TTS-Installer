@@ -1,5 +1,7 @@
 # Supertonic Open WebUI Proxy and Server
 
+- Created with Perplexity.ai 
+
 ## What is this?
 
 This setup runs **Supertonic TTS locally** and makes it available to **Open WebUI** through an OpenAI-compatible Text-to-Speech API.
