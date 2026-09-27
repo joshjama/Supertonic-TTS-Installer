@@ -66,7 +66,33 @@ sudo apt install speech-dispatcher python3 python3-venv python3-pip \
 ```
 
 `python3-venv` and `python3-pip` support the Python installation. `python3-dev`, `portaudio19-dev`, and `build-essential` provide the build dependencies for PyAudio. `ffmpeg` is required for the current playback-speed processing. **Python packages are not listed here** because the project’s installation script installs them. [pypi](https://pypi.org/project/PyAudio/)
+
 ## Installation
+
+### Local install 
+
+- Just run :
+- $ ./start_tts-server-supertonic-tts.sh 
+- Wait for the installation to complete, it tells you that it is running on 0.0.0.0:59112 
+- run 
+- $ ./start_tts-server-supertonic-tts-proxy.sh 
+- Wait for the installation to complete. 
+- It tells you that it runs on 0.0.0.0:59113. 
+- After installation is complete, you can connect to the servers on the given ports. 
+- $ You can also use the spd module as long as the both servers are alive. 
+- Please note that you need to restart them on reboot for the speech-dispatcher to work. If you do set it as your voice and reboot without systemd or crontab, you will proppably end up with a silent system.
+- Install the speech-dispatcher module with 
+- $ cd ProjectDir/speech-dispatcher/install_speechd_ai.sh  
+- Copy the line created by 
+- $ ProjectDir/speech-dispatcher/show-speechd-ai-addmodule.sh 
+- to append but not replace /etc/speech-dispatcher/speechd.conf
+- $ systemctl --user restart speech-dispatcher.service 
+- To restart speech-dispatcher and load your new module. You may need to reboot for this to take effect, because spd does oftenly not find the dbus correctly with working orca sessions currently ali ve. 
+- Test your installation after installing speech-dispatcher module with : 
+- $ spd-say -o ai "Hallo world" 
+- $ It should speak it with a natural voice. 
+
+### Systemd installation 
 
 The scripts are located in:
 

@@ -548,9 +548,83 @@ sudo apt install speech-dispatcher python3 python3-venv python3-pip \
 </div>
 </div>
 <div class="paragraph">
-<p><code>python3-venv</code> and <code>python3-pip</code> support the Python installation. <code>python3-dev</code>, <code>portaudio19-dev</code>, and <code>build-essential</code> provide the build dependencies for PyAudio. <code>ffmpeg</code> is required for the current playback-speed processing. <strong>Python packages are not listed here</strong> because the project’s installation script installs them. [pypi](<a href="https://pypi.org/project/PyAudio/" class="bare">https://pypi.org/project/PyAudio/</a>)
-## Installation</p>
+<p><code>python3-venv</code> and <code>python3-pip</code> support the Python installation. <code>python3-dev</code>, <code>portaudio19-dev</code>, and <code>build-essential</code> provide the build dependencies for PyAudio. <code>ffmpeg</code> is required for the current playback-speed processing. <strong>Python packages are not listed here</strong> because the project’s installation script installs them. [pypi](<a href="https://pypi.org/project/PyAudio/" class="bare">https://pypi.org/project/PyAudio/</a>)</p>
 </div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_installation">Installation</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_local_install">Local install</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Just run :</p>
+</li>
+<li>
+<p>$ ./start_tts-server-supertonic-tts.sh</p>
+</li>
+<li>
+<p>Wait for the installation to complete, it tells you that it is running on 0.0.0.0:59112</p>
+</li>
+<li>
+<p>run</p>
+</li>
+<li>
+<p>$ ./start_tts-server-supertonic-tts-proxy.sh</p>
+</li>
+<li>
+<p>Wait for the installation to complete.</p>
+</li>
+<li>
+<p>It tells you that it runs on 0.0.0.0:59113.</p>
+</li>
+<li>
+<p>After installation is complete, you can connect to the servers on the given ports.</p>
+</li>
+<li>
+<p>$ You can also use the spd module as long as the both servers are alive.</p>
+</li>
+<li>
+<p>Please note that you need to restart them on reboot for the speech-dispatcher to work. If you do set it as your voice and reboot without systemd or crontab, you will proppably end up with a silent system.</p>
+</li>
+<li>
+<p>Install the speech-dispatcher module with</p>
+</li>
+<li>
+<p>$ cd ProjectDir/speech-dispatcher/install_speechd_ai.sh</p>
+</li>
+<li>
+<p>Copy the line created by</p>
+</li>
+<li>
+<p>$ ProjectDir/speech-dispatcher/show-speechd-ai-addmodule.sh</p>
+</li>
+<li>
+<p>to append but not replace /etc/speech-dispatcher/speechd.conf</p>
+</li>
+<li>
+<p>$ systemctl --user restart speech-dispatcher.service</p>
+</li>
+<li>
+<p>To restart speech-dispatcher and load your new module. You may need to reboot for this to take effect, because spd does oftenly not find the dbus correctly with working orca sessions currently ali ve.</p>
+</li>
+<li>
+<p>Test your installation after installing speech-dispatcher module with :</p>
+</li>
+<li>
+<p>$ spd-say -o ai "Hallo world"</p>
+</li>
+<li>
+<p>$ It should speak it with a natural voice.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_systemd_installation">Systemd installation</h3>
 <div class="paragraph">
 <p>The scripts are located in:</p>
 </div>
@@ -667,7 +741,7 @@ sudo systemctl status supertonic-proxy</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_installation">Installation</h3>
+<h3 id="_installation_2">Installation</h3>
 <div class="olist arabic">
 <ol class="arabic">
 <li>
@@ -1388,7 +1462,7 @@ sudo systemctl disable supertonic-tts</code></pre>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-09-27 15:07:17 +0200
+Last updated 2026-09-27 16:35:39 +0200
 </div>
 </div>
 </body>
