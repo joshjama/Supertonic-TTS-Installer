@@ -205,6 +205,13 @@ You may need to reboot the system if Speech Dispatcher cannot find D-Bus.
 
 ## Usage
 
+### Speech-Dispatcher 
+
+- You can use the speed controlls with the current speechd_ai.py and speechd_ai.conf but it may be a litle bit slow doto ffmpeg consuming much cpu efforts. 
+- If it is to slow to be helpfull. replace speechd_ai.py and speechd_ai.conf with 
+speechd_ai.py_performant and speechd_ai.conf_performant by renaming them to speechd_ai.py and speechd_ai.conf. 
+- Note that your are no longer able to change the speed in this case. 
+
 ### Service addresses
 
 | Component | Address | Endpoint |
