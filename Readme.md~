@@ -1,0 +1,603 @@
+# Supertonic Open WebUI Proxy and Server
+
+## What is this?
+
+This setup runs **Supertonic TTS locally** and makes it available to **Open WebUI** through an OpenAI-compatible Text-to-Speech API.
+
+It consists of two systemd services:
+
+| Service | Script | Port | Purpose |
+|---|---|---:|---|
+| `supertonic-tts.service` | `/home/tts/tts-server-supertonic/start_tts-server-supertonic-tts.sh` | `59112` | Starts the native local Supertonic TTS server |
+| `supertonic-proxy.service` | `/home/tts/tts-server-supertonic/start_tts-server-supertonic-tts-proxy.sh` | `59113` | Starts the OpenAI-compatible proxy for Open WebUI |
+
+The proxy listens on port `59113` and forwards requests to the native local Supertonic server on port `59112`.
+
+```text
+Open WebUI
+    |
+    | POST /v1/audio/speech
+    v
+Supertonic OpenAI Proxy
+Port 59113
+    |
+    | POST /v1/tts
+    v
+Native Supertonic TTS server
+Port 59112
+```
+
+Open WebUI expects an OpenAI-compatible speech endpoint:
+
+```text
+POST /v1/audio/speech
+```
+
+The native Supertonic server uses its own endpoint:
+
+```text
+POST /v1/tts
+```
+
+The proxy translates between the two APIs. It forwards the selected `voice`, `speed`, `language`, `response_format`, and optional `total_steps` parameters to Supertonic.
+
+The proxy does **not** load a second model and does **not** modify the native Supertonic server.
+
+---
+
+## Installation
+
+The scripts are located in:
+
+```text
+/home/tts/tts-server-supertonic/
+```
+
+Expected files:
+
+```text
+/home/tts/tts-server-supertonic/
+├── start_tts-server-supertonic-tts.sh
+└── start_tts-server-supertonic-tts-proxy.sh
+```
+
+The systemd service files are located in:
+
+```text
+/etc/systemd/system/
+```
+
+Expected service files:
+
+```text
+/etc/systemd/system/supertonic-tts.service
+/etc/systemd/system/supertonic-proxy.service
+```
+
+After copying or editing a service file, reload systemd:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Start the native Supertonic TTS server first:
+
+```bash
+sudo systemctl start supertonic-tts
+```
+
+Then start the OpenAI-compatible proxy:
+
+```bash
+sudo systemctl start supertonic-proxy
+```
+
+Enable both services to start automatically after reboot:
+
+```bash
+sudo systemctl enable supertonic-tts
+sudo systemctl enable supertonic-proxy
+```
+
+Check service status:
+
+```bash
+sudo systemctl status supertonic-tts
+sudo systemctl status supertonic-proxy
+```
+
+Follow logs live:
+
+```bash
+sudo journalctl -u supertonic-tts -f
+```
+
+```bash
+sudo journalctl -u supertonic-proxy -f
+```
+
+---
+
+## Usage
+
+### Service addresses
+
+| Component | Address | Endpoint |
+|---|---|---|
+| Native Supertonic server | `http://127.0.0.1:59112` | `POST /v1/tts` |
+| OpenAI-compatible proxy | `http://127.0.0.1:59113` | `POST /v1/audio/speech` |
+| Proxy health check | `http://127.0.0.1:59113/health` | `GET /health` |
+| Proxy model list | `http://127.0.0.1:59113/v1/models` | `GET /v1/models` |
+
+Check whether the proxy and native backend are healthy:
+
+```bash
+curl -fsS http://127.0.0.1:59113/health
+```
+
+List the model exposed by the proxy:
+
+```bash
+curl -fsS http://127.0.0.1:59113/v1/models
+```
+
+### Direct TTS test
+
+Create a German WAV file through the OpenAI-compatible proxy:
+
+```bash
+curl --fail-with-body -sS \
+  -D supertonic-test.headers.txt \
+  -X POST "http://127.0.0.1:59113/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "supertonic-3",
+    "voice": "F1",
+    "input": "Hallo. Dies ist ein Test der lokalen Supertonic Sprachausgabe über den OpenAI kompatiblen Proxy.",
+    "language": "de-DE",
+    "speed": 1.2,
+    "response_format": "wav"
+  }' \
+  --output supertonic-test.wav
+```
+
+Verify that the output is a valid WAV file:
+
+```bash
+file supertonic-test.wav
+```
+
+Inspect the settings actually applied by the proxy:
+
+```bash
+grep -iE 'x-supertonic-(voice|language|requested-speed|applied-speed|total-steps)' \
+  supertonic-test.headers.txt
+```
+
+Play the file if FFmpeg is installed:
+
+```bash
+ffplay -autoexit supertonic-test.wav
+```
+
+### Voices
+
+Set the desired voice in the request or Open WebUI.
+
+Common built-in preset voices:
+
+| Voice | Description |
+|---|---|
+| `F1` | Female preset voice |
+| `M1` | Male preset voice |
+
+Use the male voice in a direct request:
+
+```json
+{
+  "voice": "M1"
+}
+```
+
+The proxy forwards the selected voice to Supertonic. It does not hard-code `F1`; `F1` is only used as a fallback when no voice is supplied.
+
+### Speech speed
+
+Supertonic supports this native speech-rate range:
+
+```text
+0.7 to 2.0
+```
+
+Useful values:
+
+| Value | Effect |
+|---:|---|
+| `0.8` | Slow and clear |
+| `1.05` | Typical default speed |
+| `1.2` | Moderately faster |
+| `1.4` to `1.5` | Fast but usually understandable |
+| `2.0` | Maximum native Supertonic speed |
+
+Values outside this range are clamped by the proxy before being sent to Supertonic.
+
+### Quality steps
+
+The proxy can forward the Supertonic-native `total_steps` parameter.
+
+| `total_steps` | Typical effect |
+|---:|---|
+| `5` to `6` | Faster generation, potentially less stable reading |
+| `8` | Balanced default |
+| `10` | Higher stability for normal text |
+| `12` | Highest quality/stability, slower generation |
+
+Example request with voice, speed, and quality steps:
+
+```bash
+curl --fail-with-body -sS \
+  -X POST "http://127.0.0.1:59113/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "supertonic-3",
+    "voice": "M1",
+    "input": "Dies ist ein Test mit einer männlichen Stimme, erhöhter Sprechgeschwindigkeit und zehn Syntheseschritten.",
+    "language": "de",
+    "speed": 1.4,
+    "total_steps": 10,
+    "response_format": "wav"
+  }' \
+  --output supertonic-m1.wav
+```
+
+The regular Open WebUI user interface may expose voice and speed but usually does not expose `total_steps`. In that case, the proxy uses its configured default value.
+
+---
+
+## Open WebUI configuration
+
+Open WebUI must connect to the proxy on port `59113`, **not** directly to the native Supertonic server on port `59112`.
+
+Open Open WebUI and navigate to:
+
+```text
+Admin Panel → Settings → Audio → Text-to-Speech
+```
+
+### Open WebUI directly on the host
+
+Use these values if Open WebUI runs directly on this Linux host:
+
+| Open WebUI setting | Value |
+|---|---|
+| Text-to-Speech Engine | `OpenAI` |
+| API Base URL | `http://127.0.0.1:59113/v1` |
+| API Key | A non-empty value, for example `local` |
+| TTS Model | `supertonic-3` |
+| TTS Voice | `F1` or `M1` |
+| Speed | `1.2` as a good starting point |
+
+### Open WebUI in Docker
+
+Use these values if Open WebUI runs in Docker on the same Linux host:
+
+| Open WebUI setting | Value |
+|---|---|
+| Text-to-Speech Engine | `OpenAI` |
+| API Base URL | `http://host.docker.internal:59113/v1` |
+| API Key | A non-empty value, for example `local` |
+| TTS Model | `supertonic-3` |
+| TTS Voice | `F1` or `M1` |
+| Speed | `1.2` as a good starting point |
+
+On Linux, `host.docker.internal` may require an explicit host gateway mapping in the Open WebUI Docker Compose configuration:
+
+```yaml
+services:
+  open-webui:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+Restart Open WebUI afterwards:
+
+```bash
+docker compose up -d
+```
+
+### Recommended Open WebUI values
+
+For German chat responses:
+
+```text
+TTS Voice: F1
+Speed:     1.2
+```
+
+For a male voice:
+
+```text
+TTS Voice: M1
+Speed:     1.2
+```
+
+If you change voice or speed, generate a new speech output. Existing audio files are not regenerated automatically.
+
+---
+
+## Troubleshooting
+
+### Native server is not running
+
+Check the service:
+
+```bash
+sudo systemctl status supertonic-tts
+```
+
+Read recent logs:
+
+```bash
+sudo journalctl -u supertonic-tts -n 100 --no-pager
+```
+
+Check whether its API documentation is reachable:
+
+```bash
+curl -I http://127.0.0.1:59112/docs
+```
+
+### Proxy is not running
+
+Check the proxy service:
+
+```bash
+sudo systemctl status supertonic-proxy
+```
+
+Read recent logs:
+
+```bash
+sudo journalctl -u supertonic-proxy -n 100 --no-pager
+```
+
+Check the proxy health endpoint:
+
+```bash
+curl -fsS http://127.0.0.1:59113/health
+```
+
+### Open WebUI cannot reach the proxy
+
+If Open WebUI runs in Docker, do **not** use this address:
+
+```text
+http://127.0.0.1:59113/v1
+```
+
+Inside a Docker container, `127.0.0.1` refers to the container itself, not the Linux host.
+
+Use:
+
+```text
+http://host.docker.internal:59113/v1
+```
+
+If needed, add this Docker Compose setting:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+### Audio file is invalid
+
+Do not use `curl -i` together with `--output output.wav`.
+
+The `-i` option writes HTTP headers into the generated WAV file, which corrupts the audio file.
+
+Use `-D headers.txt` instead:
+
+```bash
+curl -sS \
+  -D response.headers.txt \
+  -X POST "http://127.0.0.1:59113/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "supertonic-3",
+    "voice": "F1",
+    "input": "Kurzer WAV Test.",
+    "language": "de",
+    "speed": 1.0,
+    "response_format": "wav"
+  }' \
+  --output output.wav
+```
+
+### Speed does not change
+
+Verify that Open WebUI points to the proxy on port `59113`, not directly to Supertonic on port `59112`.
+
+Correct URL:
+
+```text
+http://127.0.0.1:59113/v1
+```
+
+For Open WebUI running in Docker:
+
+```text
+http://host.docker.internal:59113/v1
+```
+
+Test whether the proxy received and applied the requested speed:
+
+```bash
+curl --fail-with-body -sS \
+  -D speed.headers.txt \
+  -X POST "http://127.0.0.1:59113/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "supertonic-3",
+    "voice": "F1",
+    "input": "Dies ist ein Test der Sprechgeschwindigkeit.",
+    "language": "de",
+    "speed": 1.9,
+    "response_format": "wav"
+  }' \
+  --output speed-test.wav
+
+grep -iE 'x-supertonic-(requested-speed|applied-speed|voice)' \
+  speed.headers.txt
+```
+
+Expected headers:
+
+```text
+X-Supertonic-Requested-Speed: 1.9
+X-Supertonic-Applied-Speed: 1.9
+X-Supertonic-Voice: F1
+```
+
+### Parts of text are missing
+
+The proxy sends the complete original text to Supertonic without manual splitting. Supertonic handles long-text chunking itself.
+
+If Supertonic skips spoken words:
+
+- Reduce `speed`, for example from `1.5` to `1.2`.
+- Increase `total_steps` in the proxy configuration, for example from `8` to `10` or `12`.
+- Test the exact same text directly through the native endpoint on port `59112`.
+- Try the other built-in voice, such as `M1` instead of `F1`.
+
+---
+
+## Service management
+
+Restart both services:
+
+```bash
+sudo systemctl restart supertonic-tts
+sudo systemctl restart supertonic-proxy
+```
+
+Restart only the proxy after changing proxy behavior:
+
+```bash
+sudo systemctl restart supertonic-proxy
+```
+
+Stop both services:
+
+```bash
+sudo systemctl stop supertonic-proxy
+sudo systemctl stop supertonic-tts
+```
+
+Disable automatic startup:
+
+```bash
+sudo systemctl disable supertonic-proxy
+sudo systemctl disable supertonic-tts
+```
+
+## For Open Web UI 
+
+* Just use localhost:59113/v1 as base url 
+* use supertonic-3 as model 
+* use F1 to F5 or M1 to M5 as voice. 
+
+Reload systemd after editing either `.service` file:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+---
+
+## Security note
+
+Keep the native Supertonic server bound to `127.0.0.1` where possible. The proxy on port `59113` should be the only API integration point.
+
+If port `59113` is reachable from other devices or from the internet:
+
+- Configure `PROXY_API_KEY` in the proxy service.
+- Restrict access using a firewall.
+- Put Caddy, Nginx, or another reverse proxy with HTTPS in front of the service.
+- Do not expose port `59112` directly to untrusted networks.
+
+
+== If the systemd service fails after reboot 
+
+* Place the folloing line into your roots crontab 
+* @reboot systemctl restart supertonic-tts && sleep 20 && systemctl restart supertonic-proxy
+
+## Speech-Dispatcher Konfiguration 
+
+Dieser Abschnitt ergänzt die bestehende README. Du brauchst das Projektverzeichnis mit `speechd_ai_wrapper`, `speechd_ai.conf`, dem bereits mitgelieferten Installationsskript und `show-speechd-ai-addmodule.sh`. Dein OpenAI-kompatibler TTS-Server muss erreichbar sein.
+
+### Installation
+
+1. Führe im Projektverzeichnis das **bereits mitgelieferte Installationsskript** aus, wie im bisherigen Teil der README beschrieben.
+* Führe im speech-dispatcher - verzeichniss ebenfalls den installer aus. 
+$ bash cd speech-dispatcher/ && \
+$ ./install_speechd_ai.sh 
+
+2. Trage in `speechd_ai.conf` die Adresse deines TTS-Endpunkts sowie Modell und Standardstimme ein. Wenn diese Werte schon stimmen, musst du nichts ändern.
+3. Lass dir im Projektverzeichnis die passende Modulzeile ausgeben:
+   ```bash
+$   bash cd ./speech-dispatcher && ./show-speechd-ai-addmodule.sh
+   ```
+4. Kopiere die **tatsächlich ausgegebene** `AddModule "ai" ...`-Zeile unter die anderen `AddModule`-Zeilen in deine verwendete Speech-Dispatcher-Konfiguration. Systemweit ist das normalerweise `/etc/speech-dispatcher/speechd.conf`; gegebenenfalls wird stattdessen `~/.config/speech-dispatcher/speechd.conf` verwendet. Verschiebe das Projekt danach nicht, ohne die Pfade in der Zeile zu aktualisieren.
+5. **Starte Speech Dispatcher neu**, damit die neue Zeile geladen wird:
+
+   ```bash
+$   systemctl --user restart speech-dispatcher.service
+   ```
+
+6. Prüfe, ob `ai` erscheint und spricht:
+
+   ```bash
+$   spd-say -O
+$   spd-say -o ai "Test der Sprachausgabe"
+   ```
+
+Das Hilfsskript zeigt die Zeile lediglich an; es trägt sie nicht selbst ein. Für Änderungen an der systemweiten Konfiguration sind Administratorrechte nötig.
+
+### Mehrere feste Stimmen einrichten
+
+Wenn du ohne die noch nicht zuverlässig funktionierende Stimmenliste verschiedene Supertonic-Stimmen verwenden möchtest, kannst du **pro Stimme ein eigenes Speech-Dispatcher-Modul** eintragen. Es verwendet jeweils denselben Wrapper, aber eine eigene Kopie von `speechd_ai.conf` mit anderem `DefaultVoice`-Wert. So wählst du in Orca das Modul statt einer Stimme aus dessen Stimmenliste.
+
+Beispiel für zwei Stimmen: Belasse `speechd_ai.conf` mit `DefaultVoice F1`, kopiere sie nach `speechd_ai-f2.conf` und ändere **in der Kopie** die Zeile zu `DefaultVoice F2`:
+
+```bash
+cp speechd_ai.conf speechd_ai-f2.conf
+```
+
+Nutze die vom Hilfsskript erzeugte `AddModule`-Zeile zweimal. Lasse die erste Zeile unverändert. In der zweiten ändere nur den Modulnamen zu `ai-f2` und den Pfad der Konfigurationsdatei zu `speechd_ai-f2.conf`; der absolute Wrapper-Pfad bleibt gleich. Das sieht **schematisch** so aus – ersetze die Beispielpfade durch die absoluten Pfade aus deiner Ausgabe:
+
+```text
+AddModule "ai" "/ABSOLUTER/PROJEKTPFAD/speechd_ai_wrapper" "/ABSOLUTER/PROJEKTPFAD/speechd_ai.conf"
+AddModule "ai-f2" "/ABSOLUTER/PROJEKTPFAD/speechd_ai_wrapper" "/ABSOLUTER/PROJEKTPFAD/speechd_ai-f2.conf"
+```
+
+Nach einem Neustart sollten `ai` und `ai-f2` in `spd-say -O` erscheinen. Teste die zweite Variante mit `spd-say -o ai-f2 "Test mit F2"`. Für weitere Stimmen wiederholst du das Kopieren und gibst jeder Konfigurationsdatei und jedem Modul einen **eindeutigen** Namen. Dieses Verfahren benötigt keine dynamische Stimmenliste und fragt den TTS-Proxy nicht nach verfügbaren Stimmen.
+
+Supertonic stellt diese zehn eingebauten Stimmen bereit ([Stimmenübersicht](https://supertone-inc.github.io/supertonic-py/voices/)):
+
+| Weibliche Stimmen | Männliche Stimmen |
+| --- | --- |
+| `F1` | `M1` |
+| `F2` | `M2` |
+| `F3` | `M3` |
+| `F4` | `M4` |
+| `F5` | `M5` |
+
+Die Namen sind die Werte für `DefaultVoice`. Ob dein **konkreter** OpenAI-kompatibler Proxy sie unverändert annimmt, lässt sich mit dem jeweiligen `spd-say -o MODULNAME`-Test prüfen.
+
+### Wichtig bei Verwendung von Orca
+
+Beim Neustart von Speech Dispatcher **kann die Sprachausgabe vorübergehend still bleiben**, insbesondere bei einem Konfigurationsfehler. Richte am besten **vorher ein zweites Orca-Profil mit einem bereits funktionierenden Sprachausgabemodul** ein. Weise in Orcas Tastenbelegungen dem Befehl **„Zum nächsten Profil wechseln“** eine gut erreichbare Tastenkombination zu und teste sie, solange die Sprachausgabe noch funktioniert. Der Befehl ist standardmäßig nicht belegt ([Orca-Profilbefehle](https://help.gnome.org/users/orca/stable/commands_profiles.html.en)). Ein zweites Profil erleichtert den Wechsel zurück, garantiert aber keine Sprachausgabe, falls Speech Dispatcher insgesamt ausfällt.
+
+Die Stimmenliste innerhalb eines einzelnen `ai`-Moduls ist derzeit noch nicht verlässlich implementiert. Prüfe zuerst die **Modulliste** mit `spd-say -O`, nicht die Stimmenliste mit `spd-say -o ai -L`. Das Python-Modul schreibt ein eigenes Log nach `${TMPDIR:-/tmp}/speechd_ai.log`; veröffentliche daraus keine vertraulichen Texte oder Zugangsdaten.
+

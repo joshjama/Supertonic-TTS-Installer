@@ -1,0 +1,8 @@
+= Todo 
+
+== Todo 
+
+* Volume controll for spd. 
+* Speed controll for spd. 
+* Voices files within repo path so that you only have to copy them. 
+
