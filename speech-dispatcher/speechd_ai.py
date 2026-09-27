@@ -13,10 +13,12 @@ import wave
 
 import pyaudio
 from openai import OpenAI
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 #THRESHOLD_LEN = 40
 THRESHOLD_LEN = 0
 BACKUP = "espeak"
+speed = 1.0
 
 
 def parse_config(path):
@@ -91,18 +93,269 @@ def play_wav(data):
         stream.close()
         stream = None
 
+SPEED_MIN = Decimal("0.8")
+SPEED_MAX = Decimal("1.4")
+SPEED_STEP = Decimal("0.1")
+
+
+def safe_speed(value):
+    number = Decimal(str(value))
+    if not number.is_finite():
+        raise ValueError("Geschwindigkeit muss eine endliche Zahl sein")
+
+    number = number.quantize(SPEED_STEP, rounding=ROUND_HALF_UP)
+    return min(SPEED_MAX, max(SPEED_MIN, number))
+
+
+def speed_from_rate(value):
+    rate = Decimal(str(value))
+    if not rate.is_finite():
+        raise ValueError("Sprechrate muss eine endliche Zahl sein")
+
+    rate = min(Decimal("100"), max(Decimal("-100"), rate))
+    default = safe_speed(config.get("DefaultSpeed", "1.0"))
+
+    if rate < 0:
+        calculated = default + (default - SPEED_MIN) * rate / Decimal("100")
+    else:
+        calculated = default + (SPEED_MAX - default) * rate / Decimal("100")
+
+    return float(safe_speed(calculated))
+
+def adjust_wav_tempo_old(data, target_speed):
+    tempo = target_speed / 0.8
+    if abs(tempo - 1.0) < 0.000001:
+        return data
+
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        codecs = {
+            1: "pcm_u8",
+            2: "pcm_s16le",
+            3: "pcm_s24le",
+            4: "pcm_s32le",
+        }
+        codec = codecs.get(wav.getsampwidth())
+        if wav.getcomptype() != "NONE" or codec is None:
+            raise ValueError("Nicht unterstuetztes WAV-Sampleformat")
+
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-nostdin",
+            "-i", "pipe:0",
+            "-af", f"atempo={tempo:.6f}",
+            "-c:a", codec,
+            "-f", "wav",
+            "pipe:1",
+        ],
+        input=data,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        timeout=30,
+    )
+    return result.stdout
+
+def play_wav_with_tempo(data, target_speed):
+    global stream
+
+    tempo = target_speed / 0.8
+    if abs(tempo - 1.0) < 0.000001:
+        play_wav(data)
+        return
+
+    if audio is None:
+        raise RuntimeError("AUDIO wurde noch nicht initialisiert")
+
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        if wav.getcomptype() != "NONE":
+            raise ValueError("Komprimiertes WAV wird nicht unterstuetzt")
+
+        sample_width = wav.getsampwidth()
+        channels = wav.getnchannels()
+        sample_rate = wav.getframerate()
+
+    raw_formats = {
+        1: ("u8", "pcm_u8"),
+        2: ("s16le", "pcm_s16le"),
+        3: ("s24le", "pcm_s24le"),
+        4: ("s32le", "pcm_s32le"),
+    }
+    if sample_width not in raw_formats:
+        raise ValueError("Nicht unterstuetzte WAV-Samplebreite")
+
+    raw_format, codec = raw_formats[sample_width]
+    frame_bytes = sample_width * channels
+
+    process = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-nostdin",
+            "-i", "pipe:0",
+            "-af", f"atempo={tempo:.6f}",
+            "-ac", str(channels),
+            "-ar", str(sample_rate),
+            "-c:a", codec,
+            "-f", raw_format,
+            "pipe:1",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        bufsize=0,
+    )
+
+    def feed_ffmpeg():
+        try:
+            for offset in range(0, len(data), 65536):
+                if stop_event.is_set():
+                    break
+                process.stdin.write(data[offset:offset + 65536])
+        except (BrokenPipeError, OSError):
+            pass
+        finally:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+
+    feeder = threading.Thread(target=feed_ffmpeg, daemon=True)
+    feeder.start()
+
+    playback_stream = None
+    received_audio = False
+
+    try:
+        playback_stream = audio.open(
+            format=audio.get_format_from_width(sample_width),
+            channels=channels,
+            rate=sample_rate,
+            frames_per_buffer=1024,
+            output=True,
+        )
+        stream = playback_stream
+
+        while not stop_event.is_set():
+            chunk = process.stdout.read(1024 * frame_bytes)
+            if not chunk:
+                break
+            received_audio = True
+            playback_stream.write(chunk)
+
+        if not stop_event.is_set():
+            feeder.join()
+            returncode = process.wait()
+            if returncode != 0 or not received_audio:
+                raise RuntimeError(
+                    f"FFmpeg lieferte keine gueltige Audioausgabe "
+                    f"(Exit-Status {returncode})"
+                )
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+        feeder.join(timeout=2)
+
+        if process.stdout is not None:
+            process.stdout.close()
+
+        if playback_stream is not None:
+            try:
+                playback_stream.stop_stream()
+            finally:
+                playback_stream.close()
+
+        if stream is playback_stream:
+            stream = None
+
 
 def speak(text):
     try:
         text = strip_ssml(text)
-        logging.info("model %s voice %s input %s", model, voice, text)
+        target_speed = speed
+
+        logging.info(
+            "model %s voice %s proxy_speed 0.8 playback_target %.1f input %s",
+            model, voice, target_speed, text
+        )
+
         with client.audio.speech.with_streaming_response.create(
             model=model,
             voice=voice,
             input=text,
             response_format="wav",
+            speed=0.8,
         ) as response:
             data = response.read()
+
+        if not stop_event.is_set():
+            play_wav_with_tempo(data, target_speed)
+
+    except Exception:
+        logging.exception("TTS oder WAV-Wiedergabe fehlgeschlagen")
+    finally:
+        write("702 END")
+
+def speak_api_speed(text):
+    try:
+        text = strip_ssml(text)
+        logging.info(
+            "model %s voice %s speed %.1f input %s",
+            model, voice, speed, text
+        )
+        with client.audio.speech.with_streaming_response.create(
+            model=model,
+            voice=voice,
+            input=text,
+            response_format="wav",
+            speed=speed,
+        ) as response:
+            data = response.read()
+        if not stop_event.is_set():
+            play_wav(data)
+    except Exception:
+        logging.exception("TTS oder WAV-Wiedergabe fehlgeschlagen")
+    finally:
+        write("702 END")
+
+def speak_full_ffmpeg_wait(text):
+    try:
+        text = strip_ssml(text)
+        target_speed = speed
+
+        logging.info(
+            "model %s voice %s proxy_speed 0.8 playback_target %.1f input %s",
+            model, voice, target_speed, text
+        )
+
+        with client.audio.speech.with_streaming_response.create(
+            model=model,
+            voice=voice,
+            input=text,
+            response_format="wav",
+            speed=0.8,
+        ) as response:
+            data = response.read()
+
+        if stop_event.is_set():
+            return
+
+        try:
+            data = adjust_wav_tempo(data, target_speed)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            logging.exception(
+                "WAV-Tempobearbeitung fehlgeschlagen; spiele Original mit speed 0.8"
+            )
+
         if not stop_event.is_set():
             play_wav(data)
     except Exception:
@@ -176,7 +429,7 @@ def choose_voice():
 
 
 def cmd_set():
-    global voice, language, model, THRESHOLD_LEN
+    global voice, language, model, THRESHOLD_LEN, speed
     write("203 OK RECEIVING SETTINGS")
     for line in read_body().split("\n"):
         key, separator, value = line.partition("=")
@@ -188,6 +441,11 @@ def cmd_set():
             language = value
         elif key == "model":
             model = value
+        elif key == "rate":
+            try:
+                speed = speed_from_rate(value)
+            except (InvalidOperation, ValueError):
+                logging.warning("Ungueltiger rate-Wert: %r", value)
         elif key == "threshold":
             THRESHOLD_LEN = int(value)
     choose_voice()
@@ -210,7 +468,8 @@ def cmd_loglevel():
 
 
 def main():
-    global client, config, voice, model, language
+    global client, config, voice, model, language, speed
+    speed = speed_from_rate(0)
     log_path = os.path.join(os.environ.get("TMPDIR", "/tmp"), "speechd_ai.log")
     logging.basicConfig(
         filename=log_path,
