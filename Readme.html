@@ -506,11 +506,51 @@ Port 59112</code></pre>
 <p>The proxy does <strong>not</strong> load a second model and does <strong>not</strong> modify the native Supertonic server.</p>
 </div>
 <hr>
+<div class="ulist">
+<ul>
+<li>
+<p>The Speech-Dispatcher module integrates the project into your screen-reader orca.</p>
+</li>
+</ul>
+</div>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_installation">Installation</h2>
+<h2 id="_requirements">Requirements</h2>
 <div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p>ffmpeg</p>
+</li>
+<li>
+<p>python3-pip</p>
+</li>
+<li>
+<p>python3-venv</p>
+</li>
+</ul>
+</div>
+<div class="sect2">
+<h3 id="_system_requirements">System requirements</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>On a fresh Debian or Linux Mint installation, run this before the project’s installation script:</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">sudo apt update
+sudo apt install speech-dispatcher python3 python3-venv python3-pip \
+  python3-dev portaudio19-dev build-essential ffmpeg</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>python3-venv</code> and <code>python3-pip</code> support the Python installation. <code>python3-dev</code>, <code>portaudio19-dev</code>, and <code>build-essential</code> provide the build dependencies for PyAudio. <code>ffmpeg</code> is required for the current playback-speed processing. <strong>Python packages are not listed here</strong> because the project’s installation script installs them. [pypi](<a href="https://pypi.org/project/PyAudio/" class="bare">https://pypi.org/project/PyAudio/</a>)
+## Installation</p>
+</div>
 <div class="paragraph">
 <p>The scripts are located in:</p>
 </div>
@@ -609,6 +649,7 @@ sudo systemctl status supertonic-proxy</code></pre>
 </li>
 </ul>
 </div>
+</div>
 <div class="sect2">
 <h3 id="_speech_dispatcher_configuration">Speech Dispatcher configuration</h3>
 <div class="ulist">
@@ -626,7 +667,7 @@ sudo systemctl status supertonic-proxy</code></pre>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_installation_2">Installation</h3>
+<h3 id="_installation">Installation</h3>
 <div class="olist arabic">
 <ol class="arabic">
 <li>
@@ -1347,7 +1388,7 @@ sudo systemctl disable supertonic-tts</code></pre>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-09-27 14:38:28 +0200
+Last updated 2026-09-27 15:07:17 +0200
 </div>
 </div>
 </body>

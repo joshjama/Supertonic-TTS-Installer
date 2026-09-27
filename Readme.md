@@ -47,6 +47,25 @@ The proxy does **not** load a second model and does **not** modify the native Su
 
 ---
 
+- The Speech-Dispatcher module integrates the project into your screen-reader orca. 
+
+## Requirements 
+
+- ffmpeg 
+- python3-pip 
+- python3-venv 
+
+### System requirements
+
+- On a fresh Debian or Linux Mint installation, run this before the project’s installation script:
+
+```bash
+sudo apt update
+sudo apt install speech-dispatcher python3 python3-venv python3-pip \
+  python3-dev portaudio19-dev build-essential ffmpeg
+```
+
+`python3-venv` and `python3-pip` support the Python installation. `python3-dev`, `portaudio19-dev`, and `build-essential` provide the build dependencies for PyAudio. `ffmpeg` is required for the current playback-speed processing. **Python packages are not listed here** because the project’s installation script installs them. [pypi](https://pypi.org/project/PyAudio/)
 ## Installation
 
 The scripts are located in:
