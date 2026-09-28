@@ -673,3 +673,5 @@ If port `59113` is reachable from other devices or from the internet:
 
 * You are opening 59112 and 59113 asports. There is no savety controll behind this ports. Do not expose them to insecure networks. Use it at home or within your vpn. 
 * Please also note that this is early work in progress, so it may crash in some cases. Be sure to have a Backup - strategy especially if you are a visualy impaired person. If you want to rebuild the state before installation just delete the AddModule line within your Speech-Dispatcher installation and the virtual env within here. 
+* I changed 0.0.0.0to 127.0.0.1 to be sure that only connections from the same host are allowed. If you want to use it via another host within the same network just change to 0.0.0.0 but be sure that it keeps within a secure network-environement. 
+
