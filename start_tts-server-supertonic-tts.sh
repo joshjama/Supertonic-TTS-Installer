@@ -5,7 +5,7 @@
 # Installiert Supertonic 3 in ./supertonic-venv (relativ zum aktuellen Ordner)
 # und startet den offiziellen HTTP-Server auf:
 #
-#   http://0.0.0.0:59112
+#   http://127.0.0.1:59112
 #   OpenAI-kompatibles TTS: POST /v1/audio/speech
 #   Native Supertonic-API:  POST /v1/tts
 #   API-Dokumentation:       GET  /docs
@@ -16,7 +16,7 @@
 #   - Internetzugriff beim ersten Start (Paket + Modell-Download)
 #
 # Hinweis zur Sicherheit:
-#   Der Server bindet absichtlich an 0.0.0.0, wie angefordert. Er besitzt
+#   Der Server bindet absichtlich an 127.0.0.1, wie angefordert. Er besitzt
 #   keine eingebaute API-Key-Absicherung. Exponiere Port 59112 nicht direkt
 #   ins Internet. Nutze für Internet-Zugriff Caddy/Nginx/Traefik mit HTTPS,
 #   Authentifizierung und Firewall-Regeln.
@@ -26,7 +26,7 @@
 #   ./install-and-run-supertonic.sh
 #
 # Optional:
-#   PORT=59112 HOST=0.0.0.0 ./install-and-run-supertonic.sh
+#   PORT=59112 HOST=127.0.0.1 ./install-and-run-supertonic.sh
 #   NOHUP=1 ./install-and-run-supertonic.sh
 #
 set -Eeuo pipefail
@@ -35,7 +35,7 @@ IFS=$'\n\t'
 ###############################################################################
 # Konfiguration
 ###############################################################################
-HOST="${HOST:-0.0.0.0}"
+HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-59112}"
 
 # Alles relativ zu dem Ordner, aus dem das Skript ausgeführt wird:
@@ -108,7 +108,7 @@ require_integer_port() {
 
 require_valid_host() {
   case "${HOST}" in
-    0.0.0.0|127.0.0.1|localhost|::|::1)
+    127.0.0.1|127.0.0.1|localhost|::|::1)
       return 0
       ;;
     *)
@@ -213,7 +213,7 @@ info "Arbeitsordner: ${BASE_DIR}"
 info "Zieladresse: http://${HOST}:${PORT}"
 info "Virtuelle Umgebung: ${VENV_DIR}"
 
-if [[ "${HOST}" == "0.0.0.0" || "${HOST}" == "::" ]]; then
+if [[ "${HOST}" == "127.0.0.1" || "${HOST}" == "::" ]]; then
   warn "Der Dienst wird auf allen Netzwerkinterfaces veröffentlicht."
   warn "Der offizielle Supertonic-Server hat keine eingebaute API-Key-Authentifizierung."
   warn "Für Internetzugriff: Firewall + Reverse Proxy mit TLS und Authentifizierung verwenden."
