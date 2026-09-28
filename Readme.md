@@ -52,6 +52,7 @@ The proxy does **not** load a second model and does **not** modify the native Su
 ## Requirements 
 
 - ffmpeg 
+- sox 
 - python3-pip 
 - python3-venv 
 
@@ -61,7 +62,7 @@ The proxy does **not** load a second model and does **not** modify the native Su
 
 ```bash
 sudo apt update
-sudo apt install speech-dispatcher python3 python3-venv python3-pip \
+sudo apt install sox speech-dispatcher python3 python3-venv python3-pip \
   python3-dev portaudio19-dev build-essential ffmpeg
 ```
 
